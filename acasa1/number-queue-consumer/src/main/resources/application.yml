@@ -1,0 +1,12 @@
+micronaut:
+  application:
+    name: number-queue-consumer
+  server:
+    port: 8082
+
+rabbitmq:
+  uri: amqp://admin:admin@localhost:5672
+
+# URL-ul catre functia serverless eratostene
+eratostene:
+  url: http://localhost:8080

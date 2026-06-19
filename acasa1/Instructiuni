@@ -1,0 +1,106 @@
+Rolul fiecărei componente
+🐇 RabbitMQ — "Oficiul Poștal"
+
+Este un server independent care rulează în fundal
+Primește mesaje de la Producer și le ține în așteptare într-o coadă
+Le livrează automat către Consumer când acesta e disponibil
+Nu e cod scris de noi — îl pornim pur și simplu cu Docker
+
+📤 Producer (port 8081) — "Expeditorul"
+
+Citește numerele din numbers.txt (ex: 3,7,10,13,22,29)
+Le trimite ca mesaj în coada RabbitMQ
+Pornești fluxul cu un simplu curl către el
+
+📥 Consumer (port 8082) — "Intermediarul"
+
+Stă tot timpul cu "urechea" la coadă
+Când primește lista de numere de la RabbitMQ, o trimite mai departe prin HTTP către Eratostene
+Afișează în log care numere sunt prime
+
+🔢 Eratostene (port 8080) — "Calculatorul"
+
+Codul tău deja implementat
+Primește lista de numere + limita maximă
+Răspunde cu doar numerele prime din listă
+
+
+Ordinea pornirii contează!
+Trebuie pornite în această ordine, altfel apar erori de conexiune:
+1. RabbitMQ        ← primul, celelalte depind de el
+2. Eratostene      ← al doilea, Consumer va face HTTP către el
+3. Consumer        ← al treilea, se conectează la RabbitMQ și așteaptă
+4. Producer        ← ultimul, declanșează tot fluxul
+
+Ce se întâmplă când rulezi
+bashcurl -X POST http://localhost:8081/produce
+1. Producer citeste numbers.txt → [3, 7, 10, 13, 22, 29, 31, 50, 97]
+2. Producer trimite lista in coada RabbitMQ "numbers-queue"
+3. Consumer primeste automat lista din coada
+4. Consumer calculeaza maximul listei (97) si trimite:
+   POST http://localhost:8080/
+   {"number": 98, "list": [3,7,10,13,22,29,31,50,97]}
+5. Eratostene calculeaza ciurul pana la 98
+6. Eratostene returneaza doar primele: [3, 7, 13, 29, 31, 97]
+7. Consumer afiseaza rezultatul in log
+
+Practic — 4 terminale deschise simultan
+Terminal 1          Terminal 2          Terminal 3          Terminal 4
+──────────          ──────────          ──────────          ──────────
+RabbitMQ            Eratostene          Consumer            Producer
+(Docker)            (port 8080)         (port 8082)         (port 8081)
+                                                            + curl aici
+
+┌─────────────────────────────────────────────────────┐
+│  number-producer  →  Micronaut APPLICATION normal   │
+│                      (mn create-app)                │
+│                                                     │
+│  number-queue-consumer  →  Micronaut FUNCTION       │
+│                             (mn create-function)    │
+│                                                     │
+│  eratostene  →  Micronaut FUNCTION (deja făcut)     │
+└─────────────────────────────────────────────────────┘
+cd /home/student/SD/Lab11/acasa1
+mn create-app com.sd.laborator.number-producer --lang kotlin --build maven
+
+Ai nevoie de 4 terminale deschise simultan.
+
+Terminal 1 — Pornește RabbitMQ
+bashsudo docker run -d --name rabbitmq \
+  -p 5672:5672 \
+  -p 15672:15672 \
+  rabbitmq:3-management
+Verifică că rulează:
+bashsudo docker ps
+Ar trebui să vezi rabbitmq în listă. Așteaptă 10-15 secunde să pornească complet.
+
+Terminal 2 — Pornește Eratostene (port 8080)
+bashexport JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH=$JAVA_HOME/bin:$PATH
+cd /home/student/SD/Lab11/acasa1/eratostene-maven
+./mvnw mn:run -Plocal
+Așteaptă să apară:
+Server Running: http://localhost:8080
+
+Terminal 3 — Pornește Consumer (port 8082)
+bashexport JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH=$JAVA_HOME/bin:$PATH
+cd /home/student/SD/Lab11/acasa1/number-queue-consumer
+./mvnw mn:run
+Așteaptă să apară:
+Server Running: http://localhost:8082
+
+Terminal 4 — Pornește Producer (port 8081)
+bashexport JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH=$JAVA_HOME/bin:$PATH
+cd /home/student/SD/Lab11/acasa1/number-producer
+./mvnw mn:run
+Așteaptă să apară:
+Server Running: http://localhost:8081
+
+Declanșează fluxul
+În orice terminal liber:
+bashcurl -X POST http://localhost:8081/produce
+Apoi uită-te în Terminal 3 (consumer) — ar trebui să vezi în log:
+Numere primite din coada: [3, 7, 10, 13, 22, 29, 31, 50, 97, 100, 101, 42, 17]
+Numere prime din lista: [3, 7, 13, 29, 31, 97, 17]
